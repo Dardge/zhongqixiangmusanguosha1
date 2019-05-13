@@ -1,50 +1,25 @@
 ﻿from socket import *
 import random, sys
 import signal
+import json,time
 from multiprocessing import Process
 import os
 from select import select
 
-msg = "C 01 01 13 xx "
-msg1 = "出牌者,对象,花色，牌名"
-
 HOST = "0.0.0.0"
 PORT = 8000
 ADDR = (HOST, PORT)
-Player_info = {'user_name': 'pwd'}  # 玩家信息库
-player_id_dic = {'房间号': {'身份': 'connfd'}}  # {'房间号':{'身份': 'connfd'}} 玩家房间号映射身份字典
+Player_info = {'user_name': 'pwd', 'aa': '123'}  # 玩家信息库
+# player_id_dic = {'房间号': {'connfd': '身份'}}  # {'房间号':{'connfd':'身份' }} 玩家房间号映射身份字典
+room_dic = {'房间号': {'connfd': '身份'}}  # {'房间号': {'connfd':'身份',...}} 玩家房间号映射身份字典
 connfd_list = []  # 玩家套接字列表
 
 print(Player_info)
-print(player_id_dic)
+print(room_dic)
 
 # 测试数据
-poker_list = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15']
-identity_list = ['反贼', '主公', '反贼', '忠臣', '奸细']
-
-
-# 用户注册与登录
-class R_D():
-    def __init__(self):
-        pass
-
-    # 处理用户注册账号
-    def do_register(self, name, pwd, connfd):
-        if name in player_id_dic.keys():
-            connfd.send("用户名已存在".encode())
-        Player_info[name] = pwd
-        connfd.send(b"OK")
-
-    # 处理用户登陆
-    def do_login(self, name, pwd, connfd):
-        if name in Player_info.keys() and Player_info[name] == pwd:
-            connfd.send(b"OK")
-            connfd_list.append(connfd)
-        elif name in Player_info.keys() and Player_info[name] != pwd:
-            connfd.send("密码错误".encode())
-        else:
-            connfd.send("用户名不存在".encode())
-        return
+poker_list = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16']
+identity_list = ['反贼', '主公', '反贼', '忠臣', '内奸']
 
 
 # 洗牌方法
@@ -53,133 +28,173 @@ def shuffle(target_list):
     return
 
 
-def mk_room(connfd):
-    data = connfd.recv(100).decode()
-    if data in player_id_dic.keys():
-        connfd.send("该房间号已存在".encode())
-    player_id_dic[data][connfd] = 0  # ccccccccccccccccccccccccc
-    print(player_id_dic)  # ccccccccccccccccccccccccc
-    msg = '创建成功，您的房间号是：%s' % data
-    connfd.send(msg.encode())
+# 用户注册、登录、选择要进入的进入房间
+class R_D():
+    def __init__(self, connfd):
+        self.connfd = connfd
 
+    # 处理用户注册账号
+    def do_register(self, name, pwd):
+        if name in Player_info.keys():
+            self.connfd.send("用户名已存在".encode())
+        Player_info[name] = pwd
+        self.connfd.send(b"OK")
 
-def chose_room(connfd):
-    data = connfd.recv(100).decode()
-    if data not in player_id_dic.keys():
-        connfd.send("该房间号不存在".encode())
-    player_id_dic[data][connfd] = 0  # ccccccccccccccccccccccccccc
-    print(player_id_dic)  # ccccccccccccccccccccccccc
-    msg = '欢迎来到%s号房间' % data
-    connfd.send(msg.encode())
-
-
-def do_request(connfd):
-    rd = R_D()
-    while True:
-        data = connfd.recv(1024)
-        if data.decode().split(" ")[0] == "R":
-            name = data.decode().split(" ")[1]
-            pwd = data.decode().split(" ")[2]
-            rd.do_register(name, pwd, connfd)  # 注册操作
-            print(Player_info)
-        elif data.decode().split(" ")[0] == "L":
-            name = data.decode().split(" ")[1]
-            pwd = data.decode().split(" ")[2]
-            rd.do_login(name, pwd, connfd)  # 登陆操作
-            print(player_id_dic)
-        elif data.decode() == '#':
-            print("%s已断开连接" % connfd)
-
-
-class Game():
-    def __init__(self):
-        game_start(room_id, connfd)
-
-    def game_start(self, room_id, connfd):
-        for connfd in player_id_dic[room_id].keys():
-            shenfen(identity_list, poker_list, room_id, connfd)
-
-            # 开始游戏
-
-    # 发牌方法
-    def fapai(self, poker_list):
-        # shuffle(poker_list)  # 洗牌
-        p = " "
-        # list01=[]
-        # list01[:]=poker_list[0:4]
-        # return " ".join(list01)
-        # del poker_list[0:4]
-        for i in range(4):
-            p += "%s " % poker_list.pop()
-        return p
-
-    # 给玩家分配身份并发牌
-    def shenfen(self, identity_list, poker_list, room_num, connfd):
-        for target_connfd in connfd_list:
-            identity = identity_list.pop()
-            player_id_dic[room_num][target_connfd] = identity#cccccccccccccccccccc
-            print(player_id_dic)  # ccccccccccccccccccccccccc
-            p = fapai(poker_list)
-            msg = p + identity
-            connfd.send(msg.encode())
+    # 处理用户登陆
+    def do_login(self, name, pwd):
+        if name in Player_info.keys() and Player_info[name] == pwd:
+            self.connfd.send(b"OK")
+            connfd_list.append(self.connfd)
+        elif name in Player_info.keys() and Player_info[name] != pwd:
+            self.connfd.send("密码错误".encode())
+        else:
+            self.connfd.send("用户名不存在".encode())
         return
 
+    # 创建房间
+    def mk_room(self, room_id):
+        room_dic[room_id] = {self.connfd: None}  # 默认身份为None，后面添加 cccccccccccccccccccc
+        print(room_dic)  # 测试房间字典是否添加用户信息ccccccccccccccccccccccccc
+        msg = '您输入的房间号不存在，自动为您创建并进入房间，您所在的房间号是：%s' % room_id
+        self.connfd.send(msg.encode())
 
-# 网络搭建
-def main():
-    sockfd = socket()
+    # 选择房间
+    def chose_room(self, room_id, rlist):
+        print('进入选择房间方法')  # 测试
+        for i in room_dic.keys():
+            print(i)
+        if room_id not in room_dic.keys():  # 如果房间号不存在，则创建新的房间
+            self.mk_room(room_id)
+            return
+        elif len(room_dic[room_id]) == 2:
+            self.connfd.send("该房间已满".encode())
+            return
+        room_dic[room_id][self.connfd] = None  # 默认身份为None，后面添加ccccccccccccccccccccccccccc
+        print(room_dic)  # 测试房间字典是否添加用户信息ccccccccccccccccccccccccc
+        msg = '欢迎来到%s号房间' % room_id
+        self.connfd.send(msg.encode())
+        # rlist.remove(self.connfd)
+
+
+# 处理请求（注册、登录、选房间）
+def do_request(connfd, rlist):
+    try:
+        data1 = connfd.recv(1024)
+    except Exception as e:
+        print(e)
+        return
+    data = data1.decode().split(" ")
+    key = data[0]
+    # 创建R_D（登录、注册类）对象
+    rd = R_D(connfd)
+    # 处理请求
+    if key == "R":
+        name = data[1]
+        pwd = data[2]
+        rd.do_register(name, pwd)  # 注册操作
+        print(Player_info)
+    elif key == "L":
+        name = data[1]
+        pwd = data[2]
+        rd.do_login(name, pwd)  # 登陆操作
+        print(room_dic)
+    elif key == 'CHO':
+        room_id = data[1]
+        rd.chose_room(room_id, rlist)  # 选择房间
+        time.sleep(1)
+        if len(room_dic[room_id]) == 2:
+            g = Game(room_id)
+            g.game_start()
+        # msg = '房间当前人数为%s' % len(room_dic[room_id])
+        # connfd.send(msg.encode())
+    elif key == '#':
+        print("%s已退出" % str(connfd).split('),')[1])
+
+
+# 启动服务器
+def server_start():
+    sockfd = socket(AF_INET, SOCK_STREAM)
     sockfd.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
     sockfd.bind(ADDR)
     sockfd.listen(10)
-
-    signal.signal(signal.SIGCHLD, signal.SIG_IGN)
-
-    # 循环等待客户端连接
+    rlist = [sockfd]
+    wlist = []
+    xlist = []
+    # select IO多路复用
     while True:
         try:
-            connfd, addr = sockfd.accept()
+            rs, ws, xs = select(rlist, wlist, xlist)
         except KeyboardInterrupt:
-            sockfd.close()
-            sys.exit("服务区退出")
-        except Exception as e:
-            print(e)
-            continue
-        print("Connect from", addr)
-
-        # # 创建线程
-        # p1 = Process(do_request(connfd))
-        # p1.start()
-        # p1.join()
+            print('server退出')
+            break
+        for r in rs:
+            if r is sockfd:
+                connfd, addr = r.accept()
+                print(addr)
+                rlist.append(connfd)
+            else:
+                do_request(r, rlist)
 
 
+# 初始化玩家身份和手牌
+class Game():
+    def __init__(self, room_id):
+        self.room_id = room_id
+
+    # 给玩家分配身份
+    def send_identity_and_inti_poker(self):
+        shuffle(identity_list)  # 洗牌（身份牌）
+        for target_connfd in connfd_list:
+            identity = identity_list.pop()
+            room_dic[self.room_id][target_connfd] = identity  # 将身份添加到room_dic字典 cccccccccccccccccccc
+            print(room_dic)  # 测试身份是否加入ccccccccccccccccccccccccc
+            target_connfd.send(identity.encode())
+            init_poker_list = self.init_pofer()
+            msg = json.dumps(init_poker_list)
+            target_connfd.send(msg.encode())
+        return
+
+    # 初始化手牌+身份
+    def init_pofer(self):
+        shuffle(poker_list)  # 洗牌
+        init_poker_list = []
+        init_poker_list[:] = poker_list[0:4]
+        del poker_list[0:4]
+        return init_poker_list
+
+    def game_start(self):
+        self.send_identity_and_inti_poker()
+        # 开始游戏
+        print("等待获取玩家的出牌.....")
 
 
-        # 创建子进程
-        pid = os.fork()
-        if pid < 0:
-            pass
-        elif pid == 0:
-            sockfd.close()
-            do_request(connfd)
-            os._exit(0)
-        else:
-            connfd.close()
 
-        # 遍历寻找满5人的房间，并开始游戏
-        for room_id in player_id_dic.keys():
-            if len(player_id_dic[room_id]) == 5:
-                # rlist = [connfd]
-                wlist = []
-                xlist = []
-                # select IO多路复用
-                while True:
-                    try:
-                        rs, ws, xs = select(player_id_dic[room_id].values(), wlist, xlist)
-                    except KeyboardInterrupt:
-                        print('server退出')
-                        break
 
-                    a=Game(room_id, connfd)  # r是connfd
+def second_process():
+    # select IO多路复用
+    # rlist = []
+    wlist = []
+    xlist = []
+
+    while True:
+        for room_id in room_dic.keys():
+            try:
+                rs, ws, xs = select(room_dic[room_id].keys(), wlist, xlist)  # 监控每一个房间的套接字对象，如有活跃则执行后面的代码
+            except KeyboardInterrupt:
+                sys.exit('server退出')
+            except Exception as e:
+                print(e)
+                sys.exit('游戏层进程异常退出')
+            for connfd in rs:
+                data = connfd.recv(1024).decode()
+                print(data)  # 测试
+
+
+def main():
+    # 启动服务器
+    server_start()
+
+    # second_process()
 
 
 if __name__ == "__main__":
